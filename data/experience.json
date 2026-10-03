@@ -21,7 +21,11 @@
         "设计并填充真实经历库（experience.json）作为检索数据源",
         "建立决策记录机制：已完成选题换向、评估指标取舍等关键决策的留痕",
         "实现配置模块与环境自检（API 密钥校验、路径管理、Windows 编码修复）",
-        "进行中：Agent 工具循环（parse_jd / search_experience / score_match 等 6 个工具）"
+        "实现了向量检索链路：智谱 embedding-3 生成向量，ChromaDB 持久化存储，脚本全量重建索引",
+        "检索设计：只存 id，现场回查 experience.json（单一数据源）",
+        "实现逐条匹配判定：matched/gap 两态 + 证据必须引用到经历 id + 可迁移经验标注",
+        "用自己的真实 JD 验证：11 条硬性要求逐条判定，暴露了经历库信息缺口（basics 未进输入）并修复",
+        "进行中：Agent 工具循环（rewrite_section / generate_cover_letter / track_application 及 agent 循环）"
       ],
       "metrics": {},
       "evidence": {}

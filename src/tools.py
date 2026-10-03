@@ -79,6 +79,55 @@ def search_experience(query: str, k: int = 5) -> list[schemas.Experience]:
     return hits
 
 
+# ---------- score_match（Day 4） ----------
+
+SCORE_MATCH_PROMPT = """你是求职匹配判定器。给你一份 JD 的硬性要求（逐条）和候选人的相关经历，你要逐条判定匹配与否。
+
+判定规则（必须严格遵守）：
+1. status 只能是 matched 或 gap，没有第三种状态。禁止"部分匹配""基本符合"这类模糊表述
+2. matched 的证据标准：必须在经历库里找到明确对应的内容，并在 evidence 里引用具体 exp_id
+   和原文要点。"学习能力强""应该能快速上手""有一定基础"这类话不能作为匹配依据
+3. gap 时在 gap_detail 写清具体缺什么（缺几年经验 / 缺哪个技术的实际使用）
+4. gap 时若经历库里有可迁移的相关经验，如实写进 transferable 并注明来自哪条经历（exp_id）。
+   可迁移经验只是补充信息，不许用它把 gap 说成 matched
+5. 拿不准 matched 还是 gap 时，判 gap——漏报匹配可以人工纠正，错报匹配会误导投递决策
+6. requirement_matches 的数量和顺序必须与 must_have 完全一致，一条不落
+7. summary 用两三句话：最硬的地方 + 最致命的缺口，不许只说好话
+8.标注『进行中』的经历只算进行中，不得计为已完成"""
+
+
+def score_match(
+    jd_info: schemas.JDInfo,
+    experiences: list[schemas.Experience],
+    basics: dict,
+) -> schemas.MatchResult:
+    """逐条判定 JD 硬性要求与相关经历的匹配情况。
+
+    basics（学历/求职目标/可到岗时间等档案信息）必须传入——学历类硬性要求
+    靠它判定，检索只覆盖 experiences，不传就会误判 gap。
+    """
+    jd_block = "\n".join(f"- {r}" for r in jd_info.must_have)
+    exp_block = "\n\n".join(
+        f"[{e.id}] {e.title}（{e.period}）\n标签：{'、'.join(e.tags)}\n{e.raw}\n要点：{'; '.join(e.bullets)}"
+        for e in experiences
+    )
+    basics_block = "\n".join(f"- {k}: {v}" for k, v in basics.items() if v)
+    user_content = (
+        f"JD 岗位：{jd_info.title}（{jd_info.company}）\n\n"
+        f"硬性要求（逐条判定）：\n{jd_block}\n\n"
+        f"候选人档案：\n{basics_block}\n\n"
+        f"候选人相关经历：\n{exp_block}"
+    )
+    return llm.chat_structured(
+        schemas.MatchResult,
+        [
+            {"role": "system", "content": SCORE_MATCH_PROMPT},
+            {"role": "user", "content": user_content},
+        ],
+        temperature=0.1,
+    )
+
+
 if __name__ == "__main__":
     # 检索测试: python src/tools.py search "FastAPI 后端开发经历"
     if len(sys.argv) >= 3 and sys.argv[1] == "search":
@@ -86,18 +135,36 @@ if __name__ == "__main__":
             print(f"{e.id} | {e.title} | {e.tags}")
         sys.exit()
 
+    # 无参数：跑通前三环管线 parse_jd → search_experience → score_match
     jd_file = Path(__file__).parent.parent / "data" / "test_jd.txt"
     if not jd_file.exists():
         sys.exit(f"请先把一份真实 JD 保存到 {jd_file}，再运行本脚本")
     jd_text = jd_file.read_text(encoding="utf-8")
 
+    print("=== 1. parse_jd ===")
     info = parse_jd(jd_text)
-    output = json.dumps(info.model_dump(), ensure_ascii=False, indent=2)
-    print(output)
+    print(f"岗位: {info.title}（{info.company}）")
+    print(f"must_have: {len(info.must_have)} 条 / red_flags: {len(info.red_flags)} 条")
 
-    # 同时存档一份（UTF-8），方便 A/B 对比。文件名跟在命令后面：
-    #   python src/tools.py output_noRule4.json
-    out_name = sys.argv[1] if len(sys.argv) > 1 else "output_latest.json"
-    out_file = Path(__file__).parent.parent / "data" / out_name
-    out_file.write_text(output, encoding="utf-8")
-    print(f"\n[已存档] {out_file}")
+    print("\n=== 2. search_experience ===")
+    query = " ".join(info.keywords)
+    print(f"查询: {query}")
+    # k=全库条数：13 条规模下全量输入判定器，漏检代价大于多几百 token；
+    # 库到 50+ 条再收紧窗口并考虑 BM25 混合（决策记录 2026-10-03）
+    hits = search_experience(query, k=_collection().count())
+    for e in hits:
+        print(f"  {e.id} | {e.title}")
+
+    print("\n=== 3. score_match ===")
+    with EXPERIENCE_FILE.open(encoding="utf-8") as f:
+        basics = json.load(f)["basics"]
+    match = score_match(info, hits, basics)
+    for m in match.requirement_matches:
+        print(f"[{m.status}] {m.requirement}")
+        if m.status == "matched":
+            print(f"    证据: {m.evidence}")
+        else:
+            print(f"    缺口: {m.gap_detail}")
+            if m.transferable:
+                print(f"    可迁移: {m.transferable}")
+    print(f"\n总结: {match.summary}")
