@@ -11,12 +11,22 @@ import time
 from openai import OpenAI
 from pydantic import BaseModel
 
-from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, LLM_MODEL
+from config import (
+    DEEPSEEK_API_KEY,
+    DEEPSEEK_BASE_URL,
+    EMBED_MODEL,
+    LLM_MODEL,
+    ZHIPU_API_KEY,
+    ZHIPU_BASE_URL,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 # 模块级单例：整个项目共用一个 client
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+
+# embedding 用智谱（DeepSeek 没有 embedding API），同样是 OpenAI 兼容接口
+embed_client = OpenAI(api_key=ZHIPU_API_KEY, base_url=ZHIPU_BASE_URL)
 
 
 def chat(messages: list[dict], temperature: float = 0.7) -> str:
@@ -75,6 +85,17 @@ def chat_structured(
             })
 
     raise RuntimeError(f"结构化输出在 {1 + retries} 次尝试后仍失败: {last_err}")
+
+
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    """把一批文本变成向量（智谱 embedding-3），顺序与输入一一对应。"""
+    start = time.time()
+    resp = embed_client.embeddings.create(model=EMBED_MODEL, input=texts)
+    cost_ms = int((time.time() - start) * 1000)
+    # 按 index 排序再取，防止服务端返回乱序——乱序不会报错，是静默 bug
+    data = sorted(resp.data, key=lambda d: d.index)
+    logging.info("Embedding 调用: %s 条文本, 耗时=%sms", len(texts), cost_ms)
+    return [d.embedding for d in data]
 
 
 def _extract_json(text: str) -> dict:

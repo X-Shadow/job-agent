@@ -1,14 +1,18 @@
 """工具集：Agent 可调用的原子能力。
 
 每个工具 = 一个函数，输入明确、输出是已校验的 Pydantic 对象。
-今天只写 parse_jd，Day 3-5 会往里加其余工具。
+目前有 parse_jd（Day 2）和 search_experience（Day 3），后续几天往里加其余工具。
 """
 import json
+import logging
 import sys
 from pathlib import Path
 
+import chromadb
+
 import llm
 import schemas
+from config import CHROMA_DIR, COLLECTION_NAME, EXPERIENCE_FILE
 
 PARSE_JD_PROMPT = """你是招聘 JD 解析器。用户会粘贴一段 JD 原文，可能有格式噪声。
 
@@ -37,7 +41,51 @@ def parse_jd(jd_text: str) -> schemas.JDInfo:
     )
 
 
+# ---------- search_experience（Day 3） ----------
+
+_chroma = chromadb.PersistentClient(path=str(CHROMA_DIR))
+
+
+def _collection():
+    """拿到经历集合；索引没建过就给出明确提示，而不是抛看不懂的异常。"""
+    col = _chroma.get_or_create_collection(COLLECTION_NAME)
+    if col.count() == 0:
+        raise RuntimeError("索引为空，请先运行: python scripts/build_index.py")
+    return col
+
+
+def search_experience(query: str, k: int = 5) -> list[schemas.Experience]:
+    """向量检索经历库，返回最相关的 k 条完整经历。
+
+    Chroma 只存 id 和建索引文本（索引），完整对象现场回查 experience.json
+    （真身），保证检索结果永远是最新数据。
+    """
+    vec = llm.embed_texts([query])[0]
+    res = _collection().query(
+        query_embeddings=[vec],
+        n_results=k,
+        include=["distances"],  # id 和 document 默认返回，距离用于日志观察
+    )
+
+    # 真身回查：id -> 完整经历对象
+    with EXPERIENCE_FILE.open(encoding="utf-8") as f:
+        by_id = {e["id"]: e for e in json.load(f)["experiences"]}
+
+    hits = []
+    for exp_id, dist in zip(res["ids"][0], res["distances"][0]):
+        exp = schemas.Experience.model_validate(by_id[exp_id])
+        logging.info("命中 %s (%s) 距离=%.3f", exp_id, exp.title, dist)
+        hits.append(exp)
+    return hits
+
+
 if __name__ == "__main__":
+    # 检索测试: python src/tools.py search "FastAPI 后端开发经历"
+    if len(sys.argv) >= 3 and sys.argv[1] == "search":
+        for e in search_experience(" ".join(sys.argv[2:])):
+            print(f"{e.id} | {e.title} | {e.tags}")
+        sys.exit()
+
     jd_file = Path(__file__).parent.parent / "data" / "test_jd.txt"
     if not jd_file.exists():
         sys.exit(f"请先把一份真实 JD 保存到 {jd_file}，再运行本脚本")

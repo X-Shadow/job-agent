@@ -23,6 +23,7 @@ DOCS_DIR = ROOT / "docs"
 EXPERIENCE_FILE = DATA_DIR / "experience.json"   # 经历库（核心数据）
 CHROMA_DIR = DATA_DIR / "chroma"                 # 向量库持久化目录
 DB_FILE = DATA_DIR / "applications.db"           # 投递记录
+COLLECTION_NAME = "experience"                   # Chroma 集合名（建索引/检索共用）
 
 # ---------- 密钥 ----------
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")   # 对话模型

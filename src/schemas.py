@@ -16,3 +16,17 @@ class JDInfo(BaseModel):
     responsibilities: list[str] = Field(description="岗位职责，逐条列出")
     keywords: list[str] = Field(description="技术关键词，用行业通用写法，如 RAG、FastAPI")
     red_flags: list[str] = Field(description="可疑点，如实习岗要求3年经验；没有就空列表")
+
+
+class Experience(BaseModel):
+    """经历库里的一条经历，与 experience.json 中的对象一一对应。"""
+    id: str
+    type: str          # project / competition / practice / skill / course
+    title: str
+    org: str
+    period: str
+    tags: list[str]
+    raw: str
+    bullets: list[str]
+    metrics: dict      # 留空 {}，Day 10+ 有真实数据再填
+    evidence: dict     # 证书/链接等佐证，同上
