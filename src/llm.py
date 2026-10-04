@@ -14,8 +14,12 @@ from pydantic import BaseModel
 from config import (
     DEEPSEEK_API_KEY,
     DEEPSEEK_BASE_URL,
+    EMBED_BACKEND,
     EMBED_MODEL,
     LLM_MODEL,
+    LOCAL_EMBED_MODEL,
+    QUERY_INSTRUCTION,
+    USE_QUERY_INSTRUCTION,
     ZHIPU_API_KEY,
     ZHIPU_BASE_URL,
 )
@@ -87,14 +91,57 @@ def chat_structured(
     raise RuntimeError(f"结构化输出在 {1 + retries} 次尝试后仍失败: {last_err}")
 
 
-def embed_texts(texts: list[str]) -> list[list[float]]:
-    """把一批文本变成向量（智谱 embedding-3），顺序与输入一一对应。"""
+_local_model = None
+
+
+def _get_local_model():
+    """懒加载本地 embedding 模型。
+
+    只在真正调用时才 import torch / 载模型——否则每次跑脚本都要白等几秒。
+    模型已在 HF 缓存里，不需要联网下载。
+    """
+    global _local_model
+    if _local_model is None:
+        from sentence_transformers import SentenceTransformer
+
+        logging.info("加载本地 embedding 模型 %s（首次较慢）...", LOCAL_EMBED_MODEL)
+        _local_model = SentenceTransformer(LOCAL_EMBED_MODEL)
+    return _local_model
+
+
+def embed_texts(texts: list[str], is_query: bool = False) -> list[list[float]]:
+    """把一批文本变成向量，顺序与输入一一对应。按配置分派到本地或智谱后端。
+
+    is_query=True 表示这是检索查询（可以加 bge 的查询指令）；False 表示文档侧。
+    """
+    if EMBED_BACKEND == "local":
+        return _embed_local(texts, is_query)
+    return _embed_zhipu(texts)
+
+
+def _embed_local(texts: list[str], is_query: bool) -> list[list[float]]:
+    """本地 bge-small-zh-v1.5。池化与归一化由模型自带模块决定（CLS + Normalize）。"""
+    payload = list(texts)
+    if is_query and USE_QUERY_INSTRUCTION:
+        payload = [QUERY_INSTRUCTION + t for t in payload]
+    start = time.time()
+    vecs = _get_local_model().encode(payload, show_progress_bar=False)
+    cost_ms = int((time.time() - start) * 1000)
+    logging.info(
+        "Embedding(本地): %s 条文本, 维度=%s, 耗时=%sms",
+        len(texts), len(vecs[0]), cost_ms,
+    )
+    return [v.tolist() for v in vecs]
+
+
+def _embed_zhipu(texts: list[str]) -> list[list[float]]:
+    """智谱 embedding-3（OpenAI 兼容接口）。"""
     start = time.time()
     resp = embed_client.embeddings.create(model=EMBED_MODEL, input=texts)
     cost_ms = int((time.time() - start) * 1000)
     # 按 index 排序再取，防止服务端返回乱序——乱序不会报错，是静默 bug
     data = sorted(resp.data, key=lambda d: d.index)
-    logging.info("Embedding 调用: %s 条文本, 耗时=%sms", len(texts), cost_ms)
+    logging.info("Embedding(智谱): %s 条文本, 耗时=%sms", len(texts), cost_ms)
     return [d.embedding for d in data]
 
 

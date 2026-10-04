@@ -16,7 +16,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 import chromadb  # noqa: E402
 
 import llm  # noqa: E402
-from config import CHROMA_DIR, COLLECTION_NAME, EXPERIENCE_FILE  # noqa: E402
+from config import (  # noqa: E402
+    CHROMA_DIR,
+    COLLECTION_NAME,
+    EMBED_BACKEND,
+    EMBED_MODEL,
+    EXPERIENCE_FILE,
+    LOCAL_EMBED_MODEL,
+)
 
 
 def assemble_text(exp: dict) -> str:
@@ -38,7 +45,8 @@ def main() -> None:
     print(f"[1/3] 已读入 {len(ids)} 条经历")
 
     vectors = llm.embed_texts(texts)
-    print(f"[2/3] 已生成 {len(vectors)} 条向量 (模型: embedding-3)")
+    model_name = LOCAL_EMBED_MODEL if EMBED_BACKEND == "local" else EMBED_MODEL
+    print(f"[2/3] 已生成 {len(vectors)} 条向量 (后端: {EMBED_BACKEND}, 模型: {model_name}, 维度: {len(vectors[0])})")
 
     client = chromadb.PersistentClient(path=str(CHROMA_DIR))
     try:

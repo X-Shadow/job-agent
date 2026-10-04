@@ -2,6 +2,7 @@
   "basics": {
     "name": "",
     "education": "合肥经济学院 · 本科 · 人工智能专业 · 2023.09-2027.06",
+    "status": "大四在读 · 2027 届应届毕业生（2027.06 毕业，大四已无课，可全职实习）",
     "job_target": "Agent 开发 / AI 应用开发",
     "availability": "每周 5 天，2026.10-2027.02 全职在岗，2027.03-05 可远程",
     "github": "https://github.com/X-Shadow"
@@ -14,18 +15,20 @@
       "title": "求职助手 Agent",
       "org": "个人项目",
       "period": "2026.09 - 至今",
-      "tags": ["Python", "Agent", "ReAct", "RAG", "Chroma", "FastAPI", "DeepSeek", "Pydantic"],
+      "tags": ["Python", "Agent", "ReAct", "RAG", "Chroma", "DeepSeek", "Pydantic"],
       "raw": "解决求职中反复对照 JD、盲目改简历、投递无记录的问题。用户粘贴 JD 后，Agent 通过工具循环完成解析、逐条匹配经历库、生成带理由的改写建议并跟踪投递状态。",
       "bullets": [
         "定义项目边界与评估指标体系：只采用可测指标（检索命中率、匹配一致率、工具成功率、投递回复率），并明确说明不测幻觉率的原因（无 ground truth）",
         "设计并填充真实经历库（experience.json）作为检索数据源",
         "建立决策记录机制：已完成选题换向、评估指标取舍等关键决策的留痕",
         "实现配置模块与环境自检（API 密钥校验、路径管理、Windows 编码修复）",
-        "实现了向量检索链路：智谱 embedding-3 生成向量，ChromaDB 持久化存储，脚本全量重建索引",
+        "实现向量检索链路：本地 bge-small-zh-v1.5 生成向量（512 维，原用智谱 embedding-3 API），ChromaDB 持久化，脚本全量重建索引",
         "检索设计：只存 id，现场回查 experience.json（单一数据源）",
         "实现逐条匹配判定：matched/gap 两态 + 证据必须引用到经历 id + 可迁移经验标注",
         "用自己的真实 JD 验证：11 条硬性要求逐条判定，暴露了经历库信息缺口（basics 未进输入）并修复",
-        "进行中：Agent 工具循环（rewrite_section / generate_cover_letter / track_application 及 agent 循环）"
+        "实现简历改写建议工具（rewrite_section）：只能重组经历库已有事实，每条建议强制标注夸大风险（具体到面试追问点）",
+        "实现投递信生成工具（generate_cover_letter）：基于逐条匹配结果写信，附诚实备注区分修辞与事实",
+        "进行中：track_application 工具与 Agent 循环编排"
       ],
       "metrics": {},
       "evidence": {}

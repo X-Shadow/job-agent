@@ -42,7 +42,8 @@ class RequirementMatch(BaseModel):
     requirement: str = Field(description="JD 里的原始要求，原样保留")
     status: Literal["matched", "gap"] = Field(description="判定结果，只能是 matched 或 gap")
     evidence: str = Field(
-        description="matched 时必填：对应经历的 exp_id 和原文依据；gap 时为空字符串")
+        default="",
+        description="matched 时必填：对应经历的 exp_id 和原文依据；gap 时留空")
     gap_detail: str = Field(
         description="gap 时必填：具体缺什么；matched 时为空字符串")
     transferable: str = Field(
@@ -54,3 +55,29 @@ class MatchResult(BaseModel):
     requirement_matches: list[RequirementMatch] = Field(
         description="逐条判定，数量和顺序必须与 must_have 完全一致")
     summary: str = Field(description="两三句话：最硬的地方 + 最致命的缺口，不许只说好话")
+
+
+class RewriteSuggestion(BaseModel):
+    """一条简历改写建议：只能重组经历库里已有的事实。"""
+    requirement: str = Field(description="对应的 JD 要求")
+    target: str = Field(description="建议改哪里，如 'exp_001 的 bullets 第 2 条'")
+    original: str = Field(description="经历库里的现有写法，原样摘录")
+    rewritten: str = Field(description="改写后的写法，只能重组已有事实，禁止新增")
+    reason: str = Field(description="为什么这样改，对应 JD 的哪条要求")
+    exaggeration_risk: str = Field(
+        description="面试官追问这条时会问什么、哪里会穿帮，要具体；真没有风险才留空字符串")
+
+
+class RewritePlan(BaseModel):
+    """全部改写建议。"""
+    suggestions: list[RewriteSuggestion] = Field(
+        description="按价值排序，只给真正值得改的，不超过 5 条；没有值得改的就空列表")
+    summary: str = Field(description="一句话：简历当前对这份 JD 最需要动的地方")
+
+
+class CoverLetter(BaseModel):
+    """投递信：正文求说服力，诚实备注列出要兜底的地方。"""
+    subject: str = Field(description="邮件/消息标题")
+    body: str = Field(description="信正文，可含换行，300-500 字")
+    honesty_notes: list[str] = Field(
+        description="正文里哪些措辞是修辞、面试时要能兜住，逐条列出；一条没有才空数组")
