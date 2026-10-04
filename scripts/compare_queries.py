@@ -1,8 +1,11 @@
-"""对比检索效果：跑一组固定查询，打印 Top-5（距离见日志）。
+"""检索冒烟检查：跑一组固定查询，打印当前配置下的 Top-5。
 
-用途：
-- 切换 embedding 后端（本地 bge ↔ 智谱 API）后对比排名变化
-- 开关查询指令（USE_QUERY_INSTRUCTION）前后对比
+定位：这是**冒烟工具，不是对照实验**——只展示当前一侧的结果，
+      不构成 A/B（没有对照组）。要做对照（同进程跑两侧），
+      用 scripts/experiments/ 下的脚本。
+
+用途：切换 embedding 后端、重建索引、改检索逻辑之后，一眼确认 Top-5 没崩。
+      距离数值在日志里输出（logging 打到 stderr）。
 
 运行: python scripts/compare_queries.py
 """
