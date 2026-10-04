@@ -11,6 +11,7 @@ from pathlib import Path
 
 import chromadb
 
+import db
 import llm
 import schemas
 from config import CHROMA_DIR, COLLECTION_NAME, DATA_DIR, EXPERIENCE_FILE, RUNS_DIR
@@ -155,7 +156,8 @@ REWRITE_PROMPT = """你是简历改写顾问。给你 JD 的逐条匹配结果�
 3. reason 写清为什么这样改、对应 JD 哪条要求
 4. exaggeration_risk：改写后的说法在面试中被追问时，候选人会被问什么？哪里穿帮？
    写具体（如"会被问 Chroma 距离度量怎么选"），不要写"注意别夸大"这种废话；真没风险才留空
-5. target 指明改哪里（如 "exp_001 的 bullets 第 2 条"）"""
+5. target 指明改哪里（如 "exp_001 的 bullets 第 2 条"）
+6. 改写可以调整措辞与顺序，但不得删除或淡化真实的限定条件、诚实标注与自我评价（如「课程代码未跟跑」「基础水平」）——删掉它们属于失真，不属于优化"""
 
 COVER_LETTER_PROMPT = """你是投递信写手。给你 JD 信息、候选人档案、逐条匹配结果和候选人经历，写一封投递信。
 
@@ -236,6 +238,31 @@ def generate_cover_letter(
         ],
         temperature=0.1,
     )
+
+
+# ---------- 投递记录（Day 6，纯代码、不用 LLM） ----------
+
+def track_application(company: str, title: str, status: str, note: str = "") -> dict:
+    """记录或更新一条投递状态。
+
+    纯代码实现——面试官喜欢看到"该用代码的地方不用模型"。
+    company/title 通常由 Agent 从已解析的 JD 里补全（见 agent.py 的 dispatch），
+    这里保持显式入参，好处是本函数能脱离 Agent 单独测试。
+    """
+    if status not in schemas.APPLICATION_STATUSES:
+        raise ValueError(
+            f"状态必须是 {schemas.APPLICATION_STATUSES} 之一，收到 {status!r}")
+    return db.save_application(company, title, status, note)
+
+
+def list_applications(limit: int = 50) -> list[dict]:
+    """列出投递记录（按更新时间倒序）。"""
+    return db.list_applications(limit)
+
+
+def library_size() -> int:
+    """经历库条数——把检索窗口开到全库时用（决策记录 2026-10-03）。"""
+    return _collection().count()
 
 
 if __name__ == "__main__":

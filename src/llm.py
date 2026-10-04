@@ -7,6 +7,7 @@
 import json
 import logging
 import time
+from typing import Any
 
 from openai import OpenAI
 from pydantic import BaseModel
@@ -48,6 +49,37 @@ def chat(messages: list[dict], temperature: float = 0.7) -> str:
         usage.prompt_tokens, usage.completion_tokens, cost_ms,
     )
     return resp.choices[0].message.content
+
+
+def chat_with_tools(
+    messages: list[dict],
+    tools: list[dict],
+    temperature: float = 0.1,
+) -> tuple[Any, dict]:
+    """带工具定义的对话调用（原生 function calling）。
+
+    返回 (message, usage)。message 可能带 tool_calls——有就说明模型要调工具，
+    没有就是最终答复，由调用方（agent.py 的循环）判断。usage 供累计 token 与耗时。
+    """
+    start = time.time()
+    resp = client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=messages,
+        tools=tools,
+        temperature=temperature,
+    )
+    cost_ms = int((time.time() - start) * 1000)
+    usage = resp.usage
+    choice = resp.choices[0]
+    logging.info(
+        "LLM(工具) 调用: prompt=%s completion=%s tokens, 耗时=%sms, finish=%s",
+        usage.prompt_tokens, usage.completion_tokens, cost_ms, choice.finish_reason,
+    )
+    return choice.message, {
+        "prompt_tokens": usage.prompt_tokens,
+        "completion_tokens": usage.completion_tokens,
+        "elapsed_ms": cost_ms,
+    }
 
 
 def chat_structured(

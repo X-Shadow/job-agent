@@ -4,7 +4,7 @@
 模型返回的东西必须符合这里的结构，不符合就算失败。
 目前有 JDInfo、Experience、MatchResult，后面用到什么再加什么。
 """
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, Field
 
@@ -81,3 +81,46 @@ class CoverLetter(BaseModel):
     body: str = Field(description="信正文，可含换行，300-500 字")
     honesty_notes: list[str] = Field(
         description="正文里哪些措辞是修辞、面试时要能兜住，逐条列出；一条没有才空数组")
+
+
+# ---------- 投递记录（Day 6） ----------
+
+ApplicationStatus = Literal["已投递", "已查看", "面试中", "已挂", "已offer"]
+APPLICATION_STATUSES = list(get_args(ApplicationStatus))
+
+
+class ApplicationRecord(BaseModel):
+    """一条投递记录的对外表示（与 db.py 的 Application 行对应）。"""
+    id: int
+    company: str
+    title: str
+    status: str
+    note: str = ""
+    created_at: str
+    updated_at: str
+
+
+# ---------- Agent 循环（Day 6） ----------
+
+class AgentStep(BaseModel):
+    """ReAct 循环里的一步：模型选择了哪个工具、传了什么参数、拿到什么观察。
+
+    这份 trajectory 是 Day 12「工具成功率 / 平均步数 / P95 延迟」的数据源，
+    所以每一步都要如实记录，包括失败的步骤。
+    """
+    index: int
+    tool: str
+    arguments: dict
+    observation: str          # 工具返回（可能被截断，仅供追溯）
+    ok: bool                  # 工具是否成功执行
+    elapsed_ms: int
+
+
+class AgentResult(BaseModel):
+    """一次 Agent 运行的完整结果。"""
+    answer: str
+    steps: list[AgentStep] = Field(default_factory=list)
+    stop_reason: str = ""     # final / max_steps / error
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    elapsed_ms: int = 0
