@@ -4,3 +4,6 @@ __pycache__/
 data/chroma/
 *.pyc
 .DS_Store
+.pytest_cache/
+# 个人投递记录（公司/状态/备注），不进公开仓库
+data/applications.db
