@@ -62,7 +62,7 @@
 
 - 装包：sentence-transformers 6.1.0；torch 2.14.1+cpu / transformers 5.18.0 已在 venv（Python 3.14 装包无阻碍）
 - **踩坑**：首次建索引 13 条文本耗时 **178482ms**（178 秒）——huggingface_hub 对每个文件发 HEAD 请求检查更新，网络不通时重试 5 次指数退避。设 `HF_HUB_OFFLINE=1` 后降至 **10683ms**
-- 6 组固定查询对比（`scripts/compare_queries.py`）：与智谱时期**第一名判断基本一致**，差异集中在第 3-5 名
+- 6 组固定查询对比（`scripts/experiments/compare_queries.py`）：与智谱时期**第一名判断基本一致**，差异集中在第 3-5 名
 - 距离体感重建（512 维归一化 + L2）：强相关 0.42~0.67｜相关 0.9~1.0｜凑数 1.05~1.26；"全组 >1.0 = 库里没有真货"规律依然成立
 - **局限**：两轮对比之间改过 experience.json（exp_001 的 tags/bullets），不是干净 A/B，需智谱恢复后重跑才能严格对比
 - requirements.txt：86 → 114 行（补上 torch / transformers / sentence-transformers / scikit-learn / scipy）
