@@ -18,6 +18,7 @@ from pathlib import Path
 
 import llm
 import memory
+import runs
 import schemas
 import tools
 from config import DATA_DIR, EXPERIENCE_FILE
@@ -322,6 +323,7 @@ def run_agent(
 
 
 if __name__ == "__main__":
+    jd_text = None
     if len(sys.argv) > 1:
         user_input = " ".join(sys.argv[1:])
     else:
@@ -329,10 +331,16 @@ if __name__ == "__main__":
         if not jd_file.exists():
             sys.exit(f"请把一份 JD 存到 {jd_file}，或把需求作为参数传入："
                      f'python src/agent.py "我想投这个岗位，帮我看看"')
+        jd_text = jd_file.read_text(encoding="utf-8")
         user_input = ("帮我分析这份 JD：我匹配哪些要求、缺什么，并给出简历改写建议。\n\n"
-                      + jd_file.read_text(encoding="utf-8"))
+                      + jd_text)
 
     result = run_agent(user_input)
+
+    # 存档：JD 原文 + 解析结果 + 完整结果——界面的「历史分析」靠它回看
+    if jd_text and result.jd_info is not None:
+        run_dir = runs.save_run(jd_text, result.jd_info, result)
+        print(f"\n[已存档] {run_dir}")
 
     print("\n=== 轨迹 ===")
     for s in result.steps:

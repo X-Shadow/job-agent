@@ -3,10 +3,13 @@
 运行: streamlit run app.py
 
 界面分工（决策 2026-10-07·B：Tab 分栏，让一份完整分析能一屏看完）：
+- 侧边栏：「＋ 新增分析」+ 历史分析列表（点开回看 / 直接删除）+ Agent 轨迹
 - 主区四个 Tab：匹配报告 / 改写与投递信 / 投递记录 / 多轮对话
-- 侧边栏：Agent 轨迹 + 用量 + 历史压缩情况
 
-界面只做展示——逻辑全在 src/ 里，这样接口（Day 12 的 FastAPI）能复用同一套逻辑。
+历史分析就是 data/runs/ 里的存档（决策 2026-10-07·A）——同一份目录既做评估追溯，
+又做界面的历史记录，不另起一套存储。
+
+界面只做展示——逻辑全在 src/ 里，这样 Day 12 的 FastAPI 能复用同一套。
 """
 import sys
 from pathlib import Path
@@ -17,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 import agent  # noqa: E402
 import memory  # noqa: E402
+import runs  # noqa: E402
 import schemas  # noqa: E402
 import tools  # noqa: E402
 from config import EMBED_BACKEND, LLM_MODEL  # noqa: E402
@@ -28,9 +32,54 @@ DEFAULT_INPUT = "帮我分析这份 JD：我匹配哪些要求、缺什么，并
 
 def _init_state() -> None:
     st.session_state.setdefault("result", None)
-    st.session_state.setdefault("history", [])
+    st.session_state.setdefault("current_run", None)
     st.session_state.setdefault("jd_text", "")
+    st.session_state.setdefault("history", [])
     st.session_state.setdefault("chat_log", [])
+
+
+def _clear_current() -> None:
+    """清空当前视图（新建分析 / 删除当前这条历史时用）。"""
+    st.session_state.result = None
+    st.session_state.current_run = None
+    st.session_state.jd_text = ""
+    st.session_state.history = []
+    st.session_state.chat_log = []
+
+
+# ---------- 侧边栏 ----------
+
+def _render_sidebar_history() -> None:
+    """历史分析列表。删除不二次确认——按本人要求（误删可从 git 历史找回存档）。"""
+    if st.button("＋ 新增分析", key="new_analysis", type="primary", width="stretch"):
+        _clear_current()
+        st.rerun()
+
+    st.markdown("#### 历史分析")
+    records = runs.list_runs()
+    if not records:
+        st.caption("还没有分析记录。")
+        return
+
+    for r in records:
+        c_open, c_del = st.columns([0.84, 0.16])
+        label = f"{r['title'][:13]} · {r['timestamp'][5:]}"
+        if c_open.button(label, key=f"open_{r['name']}", width="stretch"):
+            try:
+                loaded = runs.load_run(r["dir"])
+            except ValueError as e:      # 存档坏了就提示，别让整页崩掉
+                st.error(f"这条存档打不开：{e}")
+            else:
+                _clear_current()
+                st.session_state.current_run = r["dir"]
+                st.session_state.jd_text = loaded["jd_text"]
+                st.session_state.result = loaded["result"]
+                st.rerun()
+        if c_del.button("🗑", key=f"del_{r['name']}"):
+            runs.delete_run(r["dir"])
+            if st.session_state.current_run == r["dir"]:
+                _clear_current()
+            st.rerun()
 
 
 def _render_trajectory(result: schemas.AgentResult) -> None:
@@ -41,11 +90,8 @@ def _render_trajectory(result: schemas.AgentResult) -> None:
     for s in result.steps:
         icon = "✅" if s.ok else "⚠️"
         args = ", ".join(f"{k}={v}" for k, v in s.arguments.items())
-        label = f"{icon} {s.index}. {s.tool}({args[:40]}) · {s.elapsed_ms}ms"
-        if s.ok:
-            st.caption(label)
-        else:
-            st.caption(label)
+        st.caption(f"{icon} {s.index}. {s.tool}({args[:40]}) · {s.elapsed_ms}ms")
+        if not s.ok:
             st.warning(s.observation[:200])
 
     st.caption(
@@ -62,10 +108,11 @@ def _render_trajectory(result: schemas.AgentResult) -> None:
         )
 
 
+# ---------- Tab 1 / 2 ----------
+
 def _render_match(result: schemas.AgentResult) -> None:
-    """Tab 1：匹配报告 + 缺口清单。"""
     if result.match is None:
-        st.info("还没有匹配结果。粘贴 JD 后点「开始分析」。")
+        st.info("这条记录里没有匹配结果。贴一份新 JD 点「开始分析」。")
         return
 
     m = result.match
@@ -105,9 +152,8 @@ def _render_match(result: schemas.AgentResult) -> None:
 
 
 def _render_rewrite(result: schemas.AgentResult) -> None:
-    """Tab 2：改写建议 + 投递信。"""
     if result.rewrite is None and result.letter is None:
-        st.info("还没有改写建议或投递信。分析完成后再看这里。")
+        st.info("这条记录里没有改写建议或投递信。")
         return
 
     if result.rewrite is not None:
@@ -133,8 +179,9 @@ def _render_rewrite(result: schemas.AgentResult) -> None:
                 st.caption(f"- {n}")
 
 
+# ---------- Tab 3 ----------
+
 def _render_applications() -> None:
-    """Tab 3：投递记录表 + 新增。"""
     rows = tools.list_applications()
     st.markdown("#### 投递记录")
     if rows:
@@ -158,8 +205,9 @@ def _render_applications() -> None:
                 st.rerun()
 
 
+# ---------- Tab 4 ----------
+
 def _render_chat() -> None:
-    """Tab 4：多轮对话（历史由 memory.compact_history 保护）。"""
     st.markdown("#### 多轮对话")
     st.caption(
         f"当前历史约 {memory.history_tokens(st.session_state.history)} tokens（估算）"
@@ -173,15 +221,15 @@ def _render_chat() -> None:
     prompt = st.chat_input("继续问，例如：把上一条缺口写进简历该怎么写？")
     if prompt:
         st.session_state.chat_log.append(("user", prompt))
+        st.session_state.history.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
         with st.chat_message("assistant"):
             with st.spinner("思考中…"):
                 result = agent.run_agent(prompt, history=st.session_state.history)
             st.markdown(result.answer)
-        # 记入历史：下一轮把这段带回去
-        st.session_state.history.append({"role": "user", "content": prompt})
-        st.session_state.history.append({"role": "assistant", "content": result.answer})
+        st.session_state.history.append(
+            {"role": "assistant", "content": result.answer})
         st.session_state.chat_log.append(("assistant", result.answer))
         if result.compaction.triggered:
             st.info(
@@ -195,20 +243,18 @@ def main() -> None:
 
     st.title("求职助手 Agent")
     st.caption(
-        f"模型 {LLM_MODEL}｜Embedding {EMBED_BACKEND}｜经历库 {tools.library_size()} 条"
-    )
+        f"模型 {LLM_MODEL}｜Embedding {EMBED_BACKEND}｜经历库 {tools.library_size()} 条")
 
     with st.sidebar:
-        st.markdown("### 当前配置")
-        st.caption(f"对话模型：{LLM_MODEL}")
-        st.caption(f"Embedding：{EMBED_BACKEND}")
+        _render_sidebar_history()
         st.divider()
         if st.session_state.result is not None:
             _render_trajectory(st.session_state.result)
         else:
             st.caption("分析完成后，这里显示 Agent 轨迹。")
 
-    jd_text = st.text_area("粘贴招聘 JD 原文", value=st.session_state.jd_text, height=200)
+    jd_text = st.text_area(
+        "粘贴招聘 JD 原文", value=st.session_state.jd_text, height=200)
     st.session_state.jd_text = jd_text
 
     if st.button("开始分析", type="primary"):
@@ -216,24 +262,29 @@ def main() -> None:
             st.error("先粘贴一份 JD。")
         else:
             with st.spinner("Agent 运行中…（解析 → 检索 → 判定 → 改写）"):
-                st.session_state.result = agent.run_agent(
-                    f"{DEFAULT_INPUT}\n\n{jd_text}")
+                result = agent.run_agent(f"{DEFAULT_INPUT}\n\n{jd_text}")
+                if result.jd_info is not None:
+                    run_dir = runs.save_run(jd_text, result.jd_info, result)
+                    st.session_state.current_run = str(run_dir)
+            st.session_state.result = result
             st.rerun()
 
     tab_match, tab_rewrite, tab_apps, tab_chat = st.tabs(
         ["匹配报告", "改写与投递信", "投递记录", "多轮对话"])
 
+    empty_hint = "贴一份新 JD 点「开始分析」，或从左侧选一条历史分析。"
+
     with tab_match:
         if st.session_state.result is not None:
             _render_match(st.session_state.result)
         else:
-            st.info("粘贴 JD 后点「开始分析」。")
+            st.info(empty_hint)
 
     with tab_rewrite:
         if st.session_state.result is not None:
             _render_rewrite(st.session_state.result)
         else:
-            st.info("粘贴 JD 后点「开始分析」。")
+            st.info(empty_hint)
 
     with tab_apps:
         _render_applications()

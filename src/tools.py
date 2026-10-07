@@ -6,15 +6,15 @@
 import json
 import logging
 import sys
-import time
 from pathlib import Path
 
 import chromadb
 
 import db
 import llm
+import runs
 import schemas
-from config import CHROMA_DIR, COLLECTION_NAME, DATA_DIR, EXPERIENCE_FILE, RUNS_DIR
+from config import CHROMA_DIR, COLLECTION_NAME, DATA_DIR, EXPERIENCE_FILE
 
 PARSE_JD_PROMPT = """你是招聘 JD 解析器。用户会粘贴一段 JD 原文，可能有格式噪声。
 
@@ -279,12 +279,9 @@ if __name__ == "__main__":
     if len(sys.argv) >= 2 and sys.argv[1] == "reuse":
         if len(sys.argv) < 3:
             sys.exit("用法: python src/tools.py reuse data/runs/<时间戳>")
-        run_dir = Path(sys.argv[2])
-        jd_text = (run_dir / "jd.txt").read_text(encoding="utf-8")
-        info = schemas.JDInfo.model_validate_json(
-            (run_dir / "jdinfo.json").read_text(encoding="utf-8")
-        )
-        print(f"=== 0. 复用存档: {run_dir} ===")
+        loaded = runs.load_run(sys.argv[2])
+        jd_text, info = loaded["jd_text"], loaded["info"]
+        print(f"=== 0. 复用存档: {sys.argv[2]} ===")
     else:
         # 无参数：跑通五步管线 parse_jd → search_experience → score_match
         #         → rewrite_section → generate_cover_letter
@@ -297,12 +294,7 @@ if __name__ == "__main__":
         info = parse_jd(jd_text)
 
         # 存档本次解析结果：JD 原文 + 结构化结果，供复跑和评估复用
-        run_dir = RUNS_DIR / time.strftime("%Y-%m-%d_%H%M%S")
-        run_dir.mkdir(parents=True, exist_ok=True)
-        (run_dir / "jd.txt").write_text(jd_text, encoding="utf-8")
-        (run_dir / "jdinfo.json").write_text(
-            info.model_dump_json(indent=2), encoding="utf-8"
-        )
+        run_dir = runs.save_run(jd_text, info)
         print(f"    已存档: {run_dir}")
 
     print(f"岗位: {info.title}（{info.company}）")

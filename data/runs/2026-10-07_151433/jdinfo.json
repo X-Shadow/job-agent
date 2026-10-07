@@ -1,14 +1,15 @@
 {
   "company": "未知",
-  "title": "未知",
+  "title": "AI Agent 应用开发",
   "must_have": [
     "熟悉Python编程",
     "具备良好的代码习惯和基础工程能力",
     "了解FastAPI、Flask、Django等至少一种后端开发框架",
-    "了解大语言模型的基本使用方式",
+    "了解大语言模型基本使用方式",
     "熟悉Prompt Engineering、函数调用、工具调用、多轮对话等基本概念",
-    "具备较强的学习能力、沟通能力和问题分析能力",
-    "能够独立完成模块开发与调试"
+    "具备较强的学习能力",
+    "具备较强的沟通能力",
+    "具备较强的问题分析能力，能够独立完成模块开发与调试"
   ],
   "nice_to_have": [
     "计算机、人工智能、软件工程、信息通信、自动化等相关专业优先",
@@ -29,24 +30,23 @@
     "跟进大模型、智能体、RAG、工作流编排等方向的新技术，并尝试在实际业务中落地"
   ],
   "keywords": [
-    "AI Agent",
+    "Agent",
     "LLM",
     "RAG",
     "Prompt Engineering",
     "Function Calling",
     "Tool Calling",
-    "Memory",
     "Multi-turn Dialogue",
-    "Workflow Orchestration",
+    "Memory",
+    "Python",
+    "FastAPI",
+    "Flask",
+    "Django",
     "LangChain",
     "LangGraph",
     "LlamaIndex",
     "Dify",
     "Coze",
-    "Python",
-    "FastAPI",
-    "Flask",
-    "Django",
     "MySQL",
     "Redis",
     "Vector Database",
@@ -61,12 +61,10 @@
     "小程序",
     "模型微调",
     "本地模型部署",
-    "推理服务",
-    "智能客服",
-    "知识库问答"
+    "推理服务"
   ],
   "red_flags": [
-    "原文未给出岗位名称，无法确认具体职级与方向",
-    "任职要求中未明确学历门槛（仅以“相关专业优先”表述），硬性条件偏模糊"
+    "全文未提及学历硬性门槛与经验年限要求，岗位层级和实际准入门槛不明确",
+    "任职要求普遍停留在“了解”级别，但职责覆盖Agent开发、后端接口、RAG知识库、部署测试并额外期望前端与产品能力，职责范围偏宽，存在一人多岗的可能"
   ]
 }
