@@ -305,3 +305,33 @@ COVER_LETTER_PROMPT 增加第 6 条「身份与状态只能引用档案原文，
 
 **.gitignore 补充**：`.pytest_cache/`；`data/applications.db`
 （含个人投递记录——公司/状态/备注，不应进入公开仓库）
+
+## 2026-10-07 · Day 7：历史压缩 + Streamlit 界面
+
+**memory.py（compaction）**
+- 设计：保留开头 system + 最近 keep_recent 条，中间部分交给 LLM 摘要成一条 system 消息
+- 防护：切窗口时跳过 `role=tool` 的消息——tool 消息必须紧跟带 tool_calls 的 assistant，
+  切错位置 API 会直接拒绝
+- 实测（构造 7 条历史 / 阈值 800）：**1210 → 535 tokens**（估算），摘要 4 条 / 保留 3 条
+- **假设验证**：会话中间插入 system 消息，DeepSeek **接受**（此假设原本未验证就用了，已确认）
+- token 为估算值（DeepSeek 不公开分词器：中文 0.6 token/字、非中文 4 字符≈1 词、1.3 token/词）
+  真实用量以 API 返回的 usage 为准
+
+**AgentResult 结构化产物**（决策 2026-10-07·A）
+- 新增字段 jd_info / hits / match / rewrite / letter / compaction，循环结束时一并带出
+- 实测：jd_info 有、hits 13、match 6 条、rewrite 5 条、**letter 无**
+  （该轮只要求改写建议，Agent 未调用写信工具——没有为用满工具而多调，符合预期）
+
+**app.py（Streamlit）**
+- 布局：4 个 Tab（匹配报告 / 改写与投递信 / 投递记录 / 多轮对话）+ 侧边栏 Agent 轨迹
+- 冒烟：`streamlit run` 起服务 → `/_stcore/health` 返回 ok
+- **端到端**（官方 AppTest 真跑一遍）：粘贴 JD → 点「开始分析」→ 无异常；
+  指标卡 7 硬性要求 / 6 匹配 / 1 缺口；判定表 1 张；折叠块 6 个；夸大风险提示 5 条；
+  侧边栏轨迹 4 步 + 用量 13510+1474 tokens / 68.1s
+- 修掉一个**过期 API**：`use_container_width`（官方标注 2025-12-31 后移除）→ 改为 `width="stretch"`，
+  并用 `inspect.signature` 确认该参数存在
+
+- requirements.txt：110 → 126 行（+streamlit 及其依赖）
+
+**待查观测**：本地 embedding 首次调用出现 **25.9s** 异常值（此前数次为 8~10s），
+同一机器同一模型，原因未查明，先记为观测。

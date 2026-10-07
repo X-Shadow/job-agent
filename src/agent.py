@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 import llm
+import memory
 import schemas
 import tools
 from config import DATA_DIR, EXPERIENCE_FILE
@@ -49,6 +50,10 @@ class Session:
         self.match: schemas.MatchResult | None = None
         self.rewrite: schemas.RewritePlan | None = None
         self.letter: schemas.CoverLetter | None = None
+        # 用量累计——由 run_agent 在结束时写入
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.elapsed_ms = 0
 
     def load_basics(self) -> None:
         with EXPERIENCE_FILE.open(encoding="utf-8") as f:
@@ -224,6 +229,30 @@ def _dispatch(name: str, args: dict, state: Session) -> tuple[str, bool]:
         return f"错误：{type(e).__name__}: {e}", False
 
 
+def _build_result(
+    answer: str,
+    stop_reason: str,
+    state: Session,
+    steps: list[schemas.AgentStep],
+    compaction: schemas.CompactionReport,
+) -> schemas.AgentResult:
+    """把会话状态里的结构化产物一并带出，供界面渲染表格（决策 2026-10-07·A）。"""
+    return schemas.AgentResult(
+        answer=answer,
+        steps=steps,
+        stop_reason=stop_reason,
+        prompt_tokens=state.prompt_tokens,
+        completion_tokens=state.completion_tokens,
+        elapsed_ms=state.elapsed_ms,
+        jd_info=state.jd_info,
+        hits=state.hits,
+        match=state.match,
+        rewrite=state.rewrite,
+        letter=state.letter,
+        compaction=compaction,
+    )
+
+
 def run_agent(
     user_input: str,
     history: list[dict] | None = None,
@@ -233,9 +262,11 @@ def run_agent(
     state = Session()
     state.load_basics()
 
+    # 历史过长先压缩，保护上下文预算（见 memory.py）
+    history_messages, compaction = memory.compact_history(list(history or []))
+
     messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
-    if history:
-        messages.extend(history)
+    messages.extend(history_messages)
     messages.append({"role": "user", "content": user_input})
 
     steps: list[schemas.AgentStep] = []
@@ -249,14 +280,10 @@ def run_agent(
 
         # 没有工具调用 = 模型认为可以回答了，循环结束
         if not message.tool_calls:
-            return schemas.AgentResult(
-                answer=message.content or "",
-                steps=steps,
-                stop_reason="final",
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                elapsed_ms=int((time.time() - start) * 1000),
-            )
+            state.prompt_tokens = prompt_tokens
+            state.completion_tokens = completion_tokens
+            state.elapsed_ms = int((time.time() - start) * 1000)
+            return _build_result(message.content or "", "final", state, steps, compaction)
 
         # 把模型这轮输出（含 tool_calls）原样回填进消息历史
         messages.append({
@@ -287,14 +314,11 @@ def run_agent(
                 elapsed_ms=int((time.time() - step_start) * 1000),
             ))
 
-    return schemas.AgentResult(
-        answer="（已达到最大步数上限，未能给出最终答复）",
-        steps=steps,
-        stop_reason="max_steps",
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        elapsed_ms=int((time.time() - start) * 1000),
-    )
+    state.prompt_tokens = prompt_tokens
+    state.completion_tokens = completion_tokens
+    state.elapsed_ms = int((time.time() - start) * 1000)
+    return _build_result(
+        "（已达到最大步数上限，未能给出最终答复）", "max_steps", state, steps, compaction)
 
 
 if __name__ == "__main__":

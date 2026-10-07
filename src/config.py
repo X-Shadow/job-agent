@@ -58,12 +58,17 @@ QUERY_INSTRUCTION = "为这个句子生成表示以用于检索相关文章："
 def check() -> None:
     """自检：密钥是否配好、数据文件是否存在。写完 .env 后跑一次确认。"""
     print(f"项目根目录: {ROOT}")
-    print(f"DeepSeek Key: {'已配置' if DEEPSEEK_API_KEY else '缺失 <- 去 .env 里填'}")
-    print(f"智谱 Key:     {'已配置' if ZHIPU_API_KEY else '缺失 <- 去 .env 里填'}")
-    print(f"经历库文件:   {'存在' if EXPERIENCE_FILE.exists() else '缺失'}")
     print(f"Embedding:    {EMBED_BACKEND}"
           + (f"（{LOCAL_EMBED_MODEL}）" if EMBED_BACKEND == "local"
              else f"（{EMBED_MODEL}）"))
+    print(f"DeepSeek Key: {'已配置' if DEEPSEEK_API_KEY else '缺失 <- 去 .env 里填'}")
+
+    # 智谱 Key 只在用智谱 embedding 后端时才需要，别的后端下缺失不算问题
+    zhipu_state = "已配置" if ZHIPU_API_KEY else "未配置"
+    note = "" if EMBED_BACKEND == "zhipu" else f"（当前 EMBED_BACKEND={EMBED_BACKEND}，不需要）"
+    print(f"智谱 Key:     {zhipu_state}{note}")
+
+    print(f"经历库文件:   {'存在' if EXPERIENCE_FILE.exists() else '缺失'}")
 
 
 if __name__ == "__main__":

@@ -116,6 +116,18 @@ class AgentStep(BaseModel):
     elapsed_ms: int
 
 
+class CompactionReport(BaseModel):
+    """一次历史压缩的观测记录（界面展示 + 写进 runtime_log）。
+
+    token 均为**估算值**——拿不到 DeepSeek 的分词器，真实用量以 API 的 usage 为准。
+    """
+    triggered: bool = False          # 是否真的触发了压缩
+    before_tokens: int = 0
+    after_tokens: int = 0
+    summarized_messages: int = 0     # 被摘要掉的消息条数
+    kept_messages: int = 0           # 原样保留的最近消息条数
+
+
 class AgentResult(BaseModel):
     """一次 Agent 运行的完整结果。"""
     answer: str
@@ -124,3 +136,13 @@ class AgentResult(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     elapsed_ms: int = 0
+
+    # ---- 结构化产物：给界面渲染表格用（决策 2026-10-07·A）----
+    # 这些东西 Agent 在会话状态里已经算出来了，顺手带出来，
+    # 展示层就不用去解析文本回答——产物结构化，界面不必猜。
+    jd_info: JDInfo | None = None
+    hits: list[Experience] = Field(default_factory=list)
+    match: MatchResult | None = None
+    rewrite: RewritePlan | None = None
+    letter: CoverLetter | None = None
+    compaction: CompactionReport = Field(default_factory=CompactionReport)
