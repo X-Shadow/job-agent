@@ -258,8 +258,15 @@ def run_agent(
     user_input: str,
     history: list[dict] | None = None,
     max_steps: int = 6,
+    on_tool_start=None,
+    on_tool_end=None,
 ) -> schemas.AgentResult:
-    """跑一轮 Agent：思考 → 选工具 → 执行 → 观察 → 再思考。"""
+    """跑一轮 Agent：思考 → 选工具 → 执行 → 观察 → 再思考。
+
+    on_tool_start(name, args) 在工具开跑前调用，on_tool_end(step) 在跑完后调用。
+    这是给界面做实时反馈用的——单步可能跑 30 秒（rewrite_section 实测 28~35s），
+    没有反馈用户会以为卡死。不传回调就是纯命令行行为。
+    """
     state = Session()
     state.load_basics()
 
@@ -300,20 +307,25 @@ def run_agent(
             except json.JSONDecodeError as e:
                 args, observation, ok = {}, f"错误：工具参数不是合法 JSON（{e}）", False
             else:
+                if on_tool_start is not None:
+                    on_tool_start(tc.function.name, args)
                 observation, ok = _dispatch(tc.function.name, args, state)
 
             if len(observation) > MAX_OBSERVATION_CHARS:
                 observation = observation[:MAX_OBSERVATION_CHARS] + "\n…（已截断）"
 
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": observation})
-            steps.append(schemas.AgentStep(
+            step = schemas.AgentStep(
                 index=len(steps) + 1,
                 tool=tc.function.name,
                 arguments=args,
                 observation=observation,
                 ok=ok,
                 elapsed_ms=int((time.time() - step_start) * 1000),
-            ))
+            )
+            steps.append(step)
+            if on_tool_end is not None:
+                on_tool_end(step)
 
     state.prompt_tokens = prompt_tokens
     state.completion_tokens = completion_tokens

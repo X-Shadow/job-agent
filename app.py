@@ -49,6 +49,50 @@ def _clear_current() -> None:
 
 # ---------- 侧边栏 ----------
 
+def _run_with_progress(user_input: str, history: list[dict] | None = None):
+    """跑一次 Agent，在 st.status 里实时显示每一步。
+
+    单步最长能跑 30 秒（rewrite_section 实测 28~35s），干等一个 spinner
+    用户会以为卡死。这里用 agent 的两个回调把每一步的开跑/完成就地渲染出来。
+    """
+    with st.status("Agent 运行中…", expanded=True) as status:
+        lines: list[str] = []
+        slot = st.empty()
+        cursor: dict = {"idx": None}       # 当前"运行中"那行的下标
+
+        def _flush() -> None:
+            slot.markdown("\n\n".join(lines))
+
+        def on_start(name, args) -> None:
+            lines.append(f"🔍 **{name}** 运行中…")
+            cursor["idx"] = len(lines) - 1
+            _flush()
+
+        def on_end(step) -> None:
+            icon = "✅" if step.ok else "⚠️"
+            text = f"{icon} **{step.tool}** 完成 · {step.elapsed_ms}ms"
+            idx = cursor["idx"]
+            if idx is not None and idx < len(lines):
+                lines[idx] = text            # 把"运行中"那行替换成结果
+            else:
+                lines.append(text)           # 没经过 on_start（如参数 JSON 非法）
+            cursor["idx"] = None
+            _flush()
+
+        try:
+            result = agent.run_agent(
+                user_input, history=history,
+                on_tool_start=on_start, on_tool_end=on_end)
+        except Exception as e:
+            status.update(label=f"运行失败：{type(e).__name__}: {e}", state="error")
+            raise
+
+        status.update(
+            label=f"完成 · {len(result.steps)} 步 · {result.elapsed_ms / 1000:.1f}s",
+            state="complete", expanded=False)
+    return result
+
+
 def _render_sidebar_history() -> None:
     """历史分析列表。删除不二次确认——按本人要求（误删可从 git 历史找回存档）。"""
     if st.button("＋ 新增分析", key="new_analysis", type="primary", width="stretch"):
@@ -225,8 +269,7 @@ def _render_chat() -> None:
         with st.chat_message("user"):
             st.markdown(prompt)
         with st.chat_message("assistant"):
-            with st.spinner("思考中…"):
-                result = agent.run_agent(prompt, history=st.session_state.history)
+            result = _run_with_progress(prompt, history=st.session_state.history)
             st.markdown(result.answer)
         st.session_state.history.append(
             {"role": "assistant", "content": result.answer})
@@ -247,27 +290,30 @@ def main() -> None:
 
     with st.sidebar:
         _render_sidebar_history()
-        st.divider()
-        if st.session_state.result is not None:
-            _render_trajectory(st.session_state.result)
-        else:
-            st.caption("分析完成后，这里显示 Agent 轨迹。")
 
     jd_text = st.text_area(
         "粘贴招聘 JD 原文", value=st.session_state.jd_text, height=200)
     st.session_state.jd_text = jd_text
 
+    # 注意：这里**不能**调 st.rerun()——那会把上面那段实时进度立刻抹掉。
+    # 按钮在 Tab 之前执行，设好 session_state.result，下面的 Tab 自然读到新值。
     if st.button("开始分析", type="primary"):
         if not jd_text.strip():
             st.error("先粘贴一份 JD。")
         else:
-            with st.spinner("Agent 运行中…（解析 → 检索 → 判定 → 改写）"):
-                result = agent.run_agent(f"{DEFAULT_INPUT}\n\n{jd_text}")
-                if result.jd_info is not None:
-                    run_dir = runs.save_run(jd_text, result.jd_info, result)
-                    st.session_state.current_run = str(run_dir)
+            result = _run_with_progress(f"{DEFAULT_INPUT}\n\n{jd_text}")
+            if result.jd_info is not None:
+                run_dir = runs.save_run(jd_text, result.jd_info, result)
+                st.session_state.current_run = str(run_dir)
             st.session_state.result = result
-            st.rerun()
+
+    # 轨迹放在侧边栏的第二段（跑完再渲染），这样不用 rerun 也能显示最新的一轮
+    with st.sidebar:
+        st.divider()
+        if st.session_state.result is not None:
+            _render_trajectory(st.session_state.result)
+        else:
+            st.caption("分析完成后，这里显示 Agent 轨迹。")
 
     tab_match, tab_rewrite, tab_apps, tab_chat = st.tabs(
         ["匹配报告", "改写与投递信", "投递记录", "多轮对话"])
