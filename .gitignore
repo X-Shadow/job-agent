@@ -7,3 +7,5 @@ data/chroma/
 .pytest_cache/
 # 个人投递记录（公司/状态/备注），不进公开仓库
 data/applications.db
+# 暂存给 Docker 构建用的本地 embedding 模型（92MB，可从 HF 重新获取）
+models/

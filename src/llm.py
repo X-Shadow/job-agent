@@ -27,17 +27,39 @@ from config import (
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-# 模块级单例：整个项目共用一个 client
-client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+# 两个 client 都**惰性构造**，不在 import 时创建。
+# 原因：Docker 构建期只跑本地 embedding（build_index.py 会 import 本模块），
+# 那时没有、也不需要对话密钥——在 import 阶段就要求密钥，会让"不需要密钥的活儿"也做不了。
+# 顺带好处：缺密钥时报的是明确的中文提示，而不是 openai SDK 的英文异常。
+_client = None
+_embed_client = None
 
-# embedding 用智谱（DeepSeek 没有 embedding API），同样是 OpenAI 兼容接口
-embed_client = OpenAI(api_key=ZHIPU_API_KEY, base_url=ZHIPU_BASE_URL)
+
+def _get_client():
+    """对话模型 client（DeepSeek）。首次真正用到时才创建。"""
+    global _client
+    if _client is None:
+        if not DEEPSEEK_API_KEY:
+            raise RuntimeError(
+                "缺少 DEEPSEEK_API_KEY：在 .env 里填好，或运行时用环境变量传入")
+        _client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    return _client
+
+
+def _get_embed_client():
+    """embedding client（智谱）。只有 EMBED_BACKEND=zhipu 时才会被创建。"""
+    global _embed_client
+    if _embed_client is None:
+        if not ZHIPU_API_KEY:
+            raise RuntimeError("缺少 ZHIPU_API_KEY：EMBED_BACKEND=zhipu 时必须提供")
+        _embed_client = OpenAI(api_key=ZHIPU_API_KEY, base_url=ZHIPU_BASE_URL)
+    return _embed_client
 
 
 def chat(messages: list[dict], temperature: float = 0.7) -> str:
     """普通对话调用，返回模型回复文本。自动记录 token 与耗时。"""
     start = time.time()
-    resp = client.chat.completions.create(
+    resp = _get_client().chat.completions.create(
         model=LLM_MODEL,
         messages=messages,
         temperature=temperature,
@@ -62,7 +84,7 @@ def chat_with_tools(
     没有就是最终答复，由调用方（agent.py 的循环）判断。usage 供累计 token 与耗时。
     """
     start = time.time()
-    resp = client.chat.completions.create(
+    resp = _get_client().chat.completions.create(
         model=LLM_MODEL,
         messages=messages,
         tools=tools,
@@ -169,7 +191,7 @@ def _embed_local(texts: list[str], is_query: bool) -> list[list[float]]:
 def _embed_zhipu(texts: list[str]) -> list[list[float]]:
     """智谱 embedding-3（OpenAI 兼容接口）。"""
     start = time.time()
-    resp = embed_client.embeddings.create(model=EMBED_MODEL, input=texts)
+    resp = _get_embed_client().embeddings.create(model=EMBED_MODEL, input=texts)
     cost_ms = int((time.time() - start) * 1000)
     # 按 index 排序再取，防止服务端返回乱序——乱序不会报错，是静默 bug
     data = sorted(resp.data, key=lambda d: d.index)

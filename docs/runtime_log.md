@@ -410,3 +410,41 @@ tool_calls 分片要拼装，拼错是静默 bug）。
 侧边栏轨迹改为「第二段」渲染，以显示最新一轮的结果。
 
 pytest：**25 通过**
+
+## 2026-10-07 · Day 8：Docker 镜像（构建 + 验证）
+
+**产出**：`Dockerfile`、`.dockerignore`、`scripts/stage_model.py`；`.gitignore` 加 `models/`
+
+**四个设计点**
+1. **模型进镜像**：模型在 `~/.cache/huggingface`（**构建上下文之外，COPY 够不着**）
+   → `stage_model.py` 暂存到 `models/`（已 gitignore）→ `COPY models/ /models/` + `HF_HOME=/models`
+2. **torch 装 CPU 版**：Linux 上 `pip install torch` 默认拉 CUDA 版（`nvidia-*` 依赖 2GB+）
+   → `--index-url https://download.pytorch.org/whl/cpu`
+3. **索引构建期生成**：`RUN python scripts/build_index.py`（代价：改 experience.json 要重 build）
+4. **密钥不进镜像**：`.dockerignore` 排除 `.env`，运行时 `--env-file` 传入（**已验证镜像内无 .env**）
+
+**三次构建的过程**（前两次都是真问题）
+1. **失败①：容器到 `download.pytorch.org` 的偶发 SSL 抖动**
+   pip 报 `SSLError(UNEXPECTED_EOF_WHILE_READING)`，默认 5 次重试用尽即 build 失败。
+   实测：宿主机 5 个源全 200；**容器内 5 个源也全 200**；再跑同一条 pip 命令**成功**
+   （`Would install torch-2.14.1+cpu`）→ 确认是偶发，不是源不可达。
+   修法：`--retries 10 --timeout 60`
+2. **失败②：我代码的设计缺陷（Docker 帮我发现的）**
+   `llm.py` 在**模块导入时**构造 OpenAI client → 缺 `DEEPSEEK_API_KEY` 直接抛异常；
+   而 `build_index.py` 会 import llm，于是**"不需要密钥的构建期步骤"被对话密钥卡死**。
+   修复：两个 client 改为**惰性构造**（`_get_client` / `_get_embed_client`），
+   首次真正用到时才创建，并给中文错误提示。
+   **值得记的是**：本地开发永远有 `.env`，所以这个缺陷**在本地永远暴露不出来**——
+   是容器这个"干净环境"把它逼出来的。
+3. **第三次：成功**
+
+**验收（全部在容器内实测，不是只看 HTTP 200）**
+- 镜像 **3.15GB**（比预估的 2GB 大：streamlit 带 pandas/pyarrow，加 sklearn/scipy）
+- 容器内检索链路：`library_size` + `search_experience` 正常（模型从 `/models` 载入）
+- 容器内界面脚本：AppTest 无异常、4 个 Tab 齐全
+- **容器内完整分析**：贴 JD → 点「开始分析」→ 指标卡 4 硬性要求/3 匹配/1 缺口、
+  判定表渲染、分析落成存档 `2026-10-07_083920`
+- 镜像内确认无 `.env`、`HF_HOME=/models`、索引与模型都在
+
+**待办（Day 9 相关）**：3.15GB 对免费 PaaS 偏大——若走 Railway/Render，
+可考虑切 `EMBED_BACKEND=zhipu`（镜像能瘦到约 300MB，但要充钱）

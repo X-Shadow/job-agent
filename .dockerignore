@@ -1,0 +1,26 @@
+# Docker 构建上下文排除清单
+#
+# 最关键的一条是 venv/：它有 1.7G（几乎全是 torch）。不排除的话，
+# 每次 build 都要把 1.7G 传给 Docker 守护进程，慢到无法忍受。
+
+venv/
+.env
+.git/
+.gitignore
+
+# 缓存与垃圾
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 个人数据——绝不该烤进镜像
+data/applications.db
+data/runs/
+
+# 向量索引：镜像里会在构建期重新生成（见 Dockerfile 第 5 步）
+data/chroma/
+
+# 运行时用不到
+tests/
+scripts/experiments/
+docs/
