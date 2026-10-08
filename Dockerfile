@@ -19,19 +19,28 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# 包索引可在构建时覆盖——国内服务器直连官方源常常很慢或不通。
+# 服务器上构建时用（这两个国内源已实测可用）：
+#   --build-arg PIP_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
+#   --build-arg TORCH_INDEX=https://mirror.sjtu.edu.cn/pytorch-wheels/cpu
+# 注意：mirrors.aliyun.com/pytorch-wheels/cpu 虽然能打开，但**不是合法的 pip 索引**
+#      （pip index versions 报 No matching distribution），别用那个。
+ARG PIP_INDEX=https://pypi.org/simple
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cpu
+
 # 1) torch 单独先装 CPU 版。
 #    Linux 上 pip install torch 默认拉 CUDA 版（带一堆 nvidia-* 依赖，2GB+），
-#    我们只做 CPU 推理，从官方 CPU 索引装能省掉一半以上体积。
+#    我们只做 CPU 推理，从 CPU 索引装能省掉一半以上体积。
 #    --retries/--timeout 调大：实测容器到 download.pytorch.org 的连接会偶发
 #    SSL EOF（宿主机同一条网络没事），pip 默认 5 次重试用尽就整个 build 失败。
 RUN pip install --retries 10 --timeout 60 \
-        --index-url https://download.pytorch.org/whl/cpu torch
+        --index-url ${TORCH_INDEX} torch
 
 # 2) 其余依赖。requirements.txt 里钉了 torch==...，已经装过了就过滤掉，
-#    避免 pip 又去 PyPI 拉一份 CUDA 版覆盖掉。
+#    避免 pip 又去拉一份 CUDA 版覆盖掉。
 COPY requirements.txt .
 RUN grep -v '^torch==' requirements.txt > /tmp/req.txt \
- && pip install -r /tmp/req.txt
+ && pip install --retries 10 --timeout 60 -i ${PIP_INDEX} -r /tmp/req.txt
 
 # 3) 本地 embedding 模型（约 92MB，构建前用 stage_model.py 暂存好）
 COPY models/ /models/

@@ -448,3 +448,34 @@ pytest：**25 通过**
 
 **待办（Day 9 相关）**：3.15GB 对免费 PaaS 偏大——若走 Railway/Render，
 可考虑切 `EMBED_BACKEND=zhipu`（镜像能瘦到约 300MB，但要充钱）
+
+## 2026-10-08 · Day 9（上）：部署准备
+
+**决策（本人）**：走**学生云服务器 + Docker**（而不是 Railway/Render）——
+理由是验收标准是"URL 能在手机上打开"，国内访问 Railway/Render 不稳定。
+
+**产出**
+- `Dockerfile`：包索引改为构建时可覆盖（`ARG PIP_INDEX` / `ARG TORCH_INDEX`）
+- `docs/deploy.md`：完整部署步骤 + 排错对照表
+- `scripts/deploy_remote.sh`：服务器上一键「构建 + 启动 + 打印访问地址」
+- `README.md`：架构图核对更新、快速开始补 streamlit/Docker、项目状态勾选
+- 清掉 README 尾部一段 **UTF-16 错位粘贴的垃圾**（`# ai-study-planner`，另一个项目的名字）
+
+**关键发现：HTTP 200 ≠ 合法的 pip 索引**
+
+服务器构建要从国内源装 torch（942MB），所以先实测了三个源：
+
+| 源 | 结果 |
+|---|---|
+| `mirrors.aliyun.com/pytorch-wheels/cpu` | ❌ **能打开，但不是合法 pip 索引**（`pip index versions` 报 No matching distribution） |
+| **`mirror.sjtu.edu.cn/pytorch-wheels/cpu`** | ✅ `torch 2.14.1+cpu` |
+| `pypi.tuna.tsinghua.edu.cn/simple` | ✅ 但只有 CUDA 版 torch（无 `+cpu`），不是我们要的 |
+
+若按"能打开就行"写进文档，服务器上构建**必然失败**——而且是在用户等着看 URL 的时候失败。
+
+**验证**：用**服务器上要跑的那条命令**（国内源）在本地构建 → 成功；
+再起容器实测：`torch 2.14.1+cpu`（确认镜像给的是 CPU 版而非 CUDA 版）、
+检索链路正常、健康检查 ok。验证后清理临时镜像（省 3GB）。
+
+**下一步（等用户）**：买服务器（2核2G / 40GB 磁盘 / Ubuntu）→ 安全组放行 8501 →
+按 `docs/deploy.md` 走完 → 拿到公网 URL
