@@ -9,3 +9,6 @@ data/chroma/
 data/applications.db
 # 暂存给 Docker 构建用的本地 embedding 模型（92MB，可从 HF 重新获取）
 models/
+# 运行存档与临时会话：含真实 JD（等于公开你的求职动向）且会持续膨胀，不进仓库
+data/runs/
+data/conversations/
