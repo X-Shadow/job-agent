@@ -28,7 +28,7 @@
         "用自己的真实 JD 验证：11 条硬性要求逐条判定，暴露了经历库信息缺口（basics 未进输入）并修复",
         "实现简历改写建议工具（rewrite_section）：只能重组经历库已有事实，每条建议强制标注夸大风险（具体到面试追问点）",
         "实现投递信生成工具（generate_cover_letter）：基于逐条匹配结果写信，附诚实备注区分修辞与事实",
-        "进行中：track_application 工具与 Agent 循环编排"
+        "实现投递记录工具（track_application）与 Agent 循环编排（agent.py，原生 function calling）"
       ],
       "metrics": {},
       "evidence": {}
